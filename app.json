@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "KingOfTheThrone",
+    "slug": "king-of-the-throne",
+    "version": "1.0.0",
+    "scheme": "king-of-the-throne",
+    "newArchEnabled": false,
+    "ios": {
+      "supportsTablet": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}
