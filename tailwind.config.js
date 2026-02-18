@@ -1,6 +1,5 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  // Тук казваме къде ще ползваме класовете
   content: ["./app/**/*.{js,jsx,ts,tsx}", "./src/**/*.{js,jsx,ts,tsx}"],
   presets: [require("nativewind/preset")],
   theme: {
@@ -12,9 +11,9 @@ module.exports = {
           200: '#eaddd7',
           500: '#a1887f',
           800: '#4e342e',
-          900: '#3e2723', // Тъмно кафяво
+          900: '#3e2723',
         },
-        gold: '#ffd700', // За короната
+        gold: '#ffd700',
       }
     },
   },

@@ -1,55 +1,68 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
-import { useEffect, useState } from 'react';
-// ПРОМЯНА: Използваме 'import type', за да сме сигурни, че е само за TypeScript
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from '../src/lib/supabase';
-import { View, ActivityIndicator } from 'react-native';
+import { useEffect } from 'react';
+import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { useAuthStore } from '../src/store/useAuthStore';
+import { Colors } from '../src/constants/Colors';
 
 export default function RootLayout() {
-  // ПРОМЯНА: Ако <Session | null> все още ти дава грешка, махни частта между скобите <...>
-const [session, setSession] = useState(null as Session | null);
-  const [initialized, setInitialized] = useState(false);
-  
+  const { session, initialized, initialize } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
 
+  // Initialize auth store on app start
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setInitialized(true);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
+    initialize();
   }, []);
 
+  // Navigate based on auth state
   useEffect(() => {
     if (!initialized) return;
 
-    // Взимаме името на текущата група (напр. "(auth)" или "(tabs)")
-    // segments[0] може да е undefined, затова правим проверка
     const inAuthGroup = segments[0] === '(auth)';
 
     if (session && inAuthGroup) {
-      // Имаме потребител, но е на Login екрана -> пращаме го вътре
       router.replace('/(tabs)/' as any);
     } else if (!session && !inAuthGroup) {
-      // Нямаме потребител, но се опитва да влезе вътре -> пращаме го на Login
-      // Забележка: Тук ползваме 'as any', за да избегнем грешки с пътищата, ако Expo се оплаче
       router.replace('/(auth)/login' as any);
     }
   }, [session, initialized, segments]);
 
-if (!initialized) {
-  return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fefce8' }}>
-      <ActivityIndicator size="large" color="#4e342e" />
-    </View>
-  );
-}
+  if (!initialized) {
+    return (
+      <View style={styles.loading}>
+        <Text style={styles.loadingEmoji}>💩</Text>
+        <Text style={styles.loadingCrown}>👑</Text>
+        <ActivityIndicator size="large" color={Colors.gold} style={styles.spinner} />
+        <Text style={styles.loadingText}>Preparing your throne...</Text>
+      </View>
+    );
+  }
 
   return <Slot />;
 }
+
+const styles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.darkBg,
+  },
+  loadingEmoji: {
+    fontSize: 64,
+  },
+  loadingCrown: {
+    fontSize: 36,
+    position: 'absolute',
+    top: '42%',
+  },
+  spinner: {
+    marginTop: 24,
+  },
+  loadingText: {
+    color: Colors.textSecondary,
+    marginTop: 16,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+});

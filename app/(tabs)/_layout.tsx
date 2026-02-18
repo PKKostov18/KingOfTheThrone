@@ -1,43 +1,54 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { Colors } from '../../src/constants/Colors';
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        // Използваме директни цветове, за да не минават през CSS двигателя на NativeWind
-        tabBarActiveTintColor: '#ffd700', 
-        tabBarInactiveTintColor: '#a1887f',
+        tabBarActiveTintColor: Colors.gold,
+        tabBarInactiveTintColor: Colors.textMuted,
         tabBarStyle: {
-          backgroundColor: '#3e2723',
-          borderTopWidth: 0,
-          height: 60,
+          backgroundColor: Colors.cardBg,
+          borderTopWidth: 1,
+          borderTopColor: Colors.border,
+          height: 65,
           paddingBottom: 10,
-          paddingTop: 10,
+          paddingTop: 8,
+          elevation: 20,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+        },
+        tabBarLabelStyle: {
+          fontWeight: '700',
+          fontSize: 11,
+          letterSpacing: 0.5,
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Тронът',
-          tabBarIcon: ({ color }) => <FontAwesome5 name="toilet" size={24} color={color} />,
+          title: '🚽 Throne',
+          tabBarIcon: ({ color }) => <FontAwesome5 name="toilet" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="leaderboard"
         options={{
-          title: 'Класация',
-          tabBarIcon: ({ color }) => <FontAwesome5 name="trophy" size={24} color={color} />,
+          title: '🏆 Rankings',
+          tabBarIcon: ({ color }) => <FontAwesome5 name="crown" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="social"
         options={{
-          title: 'Приятели',
-          tabBarIcon: ({ color }) => <FontAwesome5 name="users" size={24} color={color} />,
+          title: '💩 Squad',
+          tabBarIcon: ({ color }) => <FontAwesome5 name="users" size={22} color={color} />,
         }}
       />
     </Tabs>
