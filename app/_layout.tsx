@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../src/lib/supabase';
 import { View, ActivityIndicator } from 'react-native';
-import "../global.css";
 
 export default function RootLayout() {
   // ПРОМЯНА: Ако <Session | null> все още ти дава грешка, махни частта между скобите <...>

@@ -18,11 +18,11 @@ export default function BigRedButton({ onPress, isActive }: BigRedButtonProps) {
       ]}
     >
       <View style={styles.innerCircle}>
-        <Text className="text-white text-4xl font-extrabold text-center">
+        <Text style={styles.mainLabel}>
           {isActive ? "СТОП" : "АКАМ\nСЕГА"}
         </Text>
         {!isActive && (
-          <Text className="text-white/70 text-sm mt-2 font-bold">
+          <Text style={styles.subLabel}>
             Push me
           </Text>
         )}
@@ -62,5 +62,17 @@ const styles = StyleSheet.create({
     borderRadius: 112,
     justifyContent: 'center',
     alignItems: 'center',
-  }
+  },
+  mainLabel: {
+    color: '#ffffff',
+    fontSize: 36,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  subLabel: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    marginTop: 8,
+    fontWeight: '700',
+  },
 });

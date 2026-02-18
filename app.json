@@ -4,7 +4,6 @@
     "slug": "king-of-the-throne",
     "version": "1.0.0",
     "scheme": "king-of-the-throne",
-    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true
     },

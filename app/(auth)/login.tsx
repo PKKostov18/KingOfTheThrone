@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, StyleSheet } from 'react-native';
 import { supabase } from '../../src/lib/supabase';
 
 export default function LoginScreen() {
@@ -26,21 +26,21 @@ export default function LoginScreen() {
   }
 
   return (
-    <View className="flex-1 justify-center items-center bg-[#efebe9] px-5">
-      <View className="items-center mb-10">
-        <Text className="text-6xl mb-2">👑</Text>
-        <Text className="text-3xl font-bold text-[#4e342e] text-center">King of the Throne</Text>
-        <Text className="text-[#8d6e63] mt-2">Влез в кралството</Text>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.crown}>👑</Text>
+        <Text style={styles.title}>King of the Throne</Text>
+        <Text style={styles.subtitle}>Влез в кралството</Text>
       </View>
 
-      <View className="w-full">
+      <View style={styles.form}>
         <TextInput
           onChangeText={setEmail}
           value={email}
           placeholder="email@address.com"
           placeholderTextColor="#a1887f"
           autoCapitalize="none"
-          className="bg-white border border-[#d7ccc8] rounded-xl p-4 text-[#4e342e]"
+          style={styles.input}
         />
         <TextInput
           onChangeText={setPassword}
@@ -49,27 +49,99 @@ export default function LoginScreen() {
           placeholderTextColor="#a1887f"
           secureTextEntry={true}
           autoCapitalize="none"
-          className="bg-white border border-[#d7ccc8] rounded-xl p-4 text-[#4e342e] mt-4"
+          style={[styles.input, styles.inputSpacing]}
         />
       </View>
 
-      <View className="w-full mt-8">
+      <View style={styles.actions}>
         <TouchableOpacity 
           onPress={signInWithEmail} 
           disabled={loading}
-          className="bg-[#4e342e] py-4 rounded-xl items-center justify-center"
+          style={styles.signInButton}
         >
-          {loading ? <ActivityIndicator color="white" /> : <Text className="text-white font-bold text-lg">Влез</Text>}
+          {loading ? <ActivityIndicator color="white" /> : <Text style={styles.signInText}>Влез</Text>}
         </TouchableOpacity>
 
         <TouchableOpacity 
           onPress={signUpWithEmail} 
           disabled={loading}
-          className="border-2 border-[#4e342e] py-4 rounded-xl mt-4 items-center justify-center"
+          style={styles.signUpButton}
         >
-          <Text className="text-[#4e342e] font-bold text-lg">Създай акаунт</Text>
+          <Text style={styles.signUpText}>Създай акаунт</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#efebe9',
+    paddingHorizontal: 20,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  crown: {
+    fontSize: 56,
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: '#4e342e',
+    textAlign: 'center',
+  },
+  subtitle: {
+    color: '#8d6e63',
+    marginTop: 8,
+  },
+  form: {
+    width: '100%',
+  },
+  input: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d7ccc8',
+    borderRadius: 12,
+    padding: 16,
+    color: '#4e342e',
+  },
+  inputSpacing: {
+    marginTop: 16,
+  },
+  actions: {
+    width: '100%',
+    marginTop: 32,
+  },
+  signInButton: {
+    backgroundColor: '#4e342e',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signInText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 18,
+  },
+  signUpButton: {
+    borderWidth: 2,
+    borderColor: '#4e342e',
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginTop: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signUpText: {
+    color: '#4e342e',
+    fontWeight: '700',
+    fontSize: 18,
+  },
+});
