@@ -1,19 +1,21 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { Colors } from '../../src/constants/Colors';
+import { useColors } from '../../src/hooks/useColors';
 
 export default function TabLayout() {
+  const C = useColors();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Colors.gold,
-        tabBarInactiveTintColor: Colors.textMuted,
+        tabBarActiveTintColor: C.gold,
+        tabBarInactiveTintColor: C.textMuted,
         tabBarStyle: {
-          backgroundColor: Colors.cardBg,
+          backgroundColor: C.cardBg,
           borderTopWidth: 1,
-          borderTopColor: Colors.border,
+          borderTopColor: C.border,
           height: 65,
           paddingBottom: 10,
           paddingTop: 8,

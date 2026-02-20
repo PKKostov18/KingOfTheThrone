@@ -1,4 +1,7 @@
 // 👑💩 King of the Throne — Color Palette
+// Default theme colors (Royal Brown) + dynamic theme support
+
+import type { AppTheme } from './Themes';
 
 export const Colors = {
   // Backgrounds
@@ -44,4 +47,51 @@ export const Colors = {
   // Overlays
   overlay: 'rgba(0, 0, 0, 0.7)',
   overlayLight: 'rgba(0, 0, 0, 0.4)',
-} as const;
+};
+
+export type ColorsType = typeof Colors;
+
+/**
+ * Map an AppTheme to the Colors shape used throughout the app.
+ * This lets every screen use themed colors without changing prop names.
+ */
+
+export function getThemedColors(theme: AppTheme): ColorsType {
+  return {
+    darkBg: theme.darkBg,
+    cardBg: theme.cardBg,
+    cardBgLight: theme.cardBgLight,
+    modalBg: theme.modalBg,
+
+    gold: theme.accent,
+    goldLight: theme.accentLight,
+    goldDark: theme.accentDark,
+    goldMuted: theme.accentMuted,
+
+    poopBrown: '#8B5A2B',
+    poopDark: '#5C3A1E',
+    poopLight: '#C68642',
+    poopMuted: 'rgba(139, 90, 43, 0.3)',
+
+    toiletBlue: '#4FC3F7',
+    toiletBlueDark: '#0288D1',
+    toiletBlueMuted: 'rgba(79, 195, 247, 0.15)',
+
+    activeRed: theme.activeRed,
+    activeRedDark: '#CC0000',
+    successGreen: '#4CAF50',
+    warningOrange: '#FF9800',
+
+    textPrimary: theme.textPrimary,
+    textSecondary: theme.textSecondary,
+    textMuted: theme.textMuted,
+    textDark: theme.textDark,
+
+    border: theme.border,
+    borderLight: theme.borderLight,
+    divider: 'rgba(255, 215, 0, 0.1)',
+
+    overlay: 'rgba(0, 0, 0, 0.7)',
+    overlayLight: 'rgba(0, 0, 0, 0.4)',
+  };
+}

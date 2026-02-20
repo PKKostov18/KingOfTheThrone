@@ -1,6 +1,6 @@
 import { TouchableOpacity, Text, View, StyleSheet } from 'react-native';
-import React from 'react';
-import { Colors } from '../constants/Colors';
+import React, { useMemo } from 'react';
+import { useColors } from '../hooks/useColors';
 
 interface BigRedButtonProps {
   onPress: () => void;
@@ -8,6 +8,9 @@ interface BigRedButtonProps {
 }
 
 export default function BigRedButton({ onPress, isActive }: BigRedButtonProps) {
+  const C = useColors();
+  const styles = useMemo(() => makeStyles(C), [C]);
+
   return (
     <View style={styles.outerGlow}>
       <TouchableOpacity
@@ -54,95 +57,75 @@ export default function BigRedButton({ onPress, isActive }: BigRedButtonProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  outerGlow: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.goldMuted,
-  },
-  button: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 5,
-    elevation: 20,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-  },
-  buttonActive: {
-    backgroundColor: Colors.activeRed,
-    borderColor: Colors.activeRedDark,
-    shadowColor: Colors.activeRed,
-  },
-  buttonInactive: {
-    backgroundColor: Colors.gold,
-    borderColor: Colors.goldDark,
-    shadowColor: Colors.gold,
-  },
-  seatRing: {
-    width: 230,
-    height: 230,
-    borderRadius: 115,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 6,
-  },
-  seatRingActive: {
-    borderColor: 'rgba(255,255,255,0.3)',
-    backgroundColor: 'rgba(0,0,0,0.15)',
-  },
-  seatRingInactive: {
-    borderColor: 'rgba(139,90,43,0.4)',
-    backgroundColor: 'rgba(0,0,0,0.1)',
-  },
-  innerBowl: {
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-  },
-  innerBowlActive: {
-    borderColor: 'rgba(255,255,255,0.15)',
-    backgroundColor: 'rgba(0,0,0,0.1)',
-  },
-  innerBowlInactive: {
-    borderColor: 'rgba(139,90,43,0.25)',
-    backgroundColor: 'rgba(27,14,7,0.2)',
-  },
-  poopEmoji: {
-    fontSize: 48,
-    marginBottom: 4,
-  },
-  mainLabel: {
-    fontSize: 22,
-    fontWeight: '900',
-    textAlign: 'center',
-    letterSpacing: 2,
-  },
-  mainLabelActive: {
-    color: '#FFFFFF',
-  },
-  mainLabelInactive: {
-    color: Colors.darkBg,
-  },
-  subLabel: {
-    color: 'rgba(27,14,7,0.6)',
-    fontSize: 13,
-    marginTop: 4,
-    fontWeight: '700',
-  },
-  subLabelActive: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 13,
-    marginTop: 4,
-    fontWeight: '700',
-  },
-});
+function makeStyles(C: any) {
+  return StyleSheet.create({
+    outerGlow: {
+      width: 280,
+      height: 280,
+      borderRadius: 140,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: C.goldMuted,
+    },
+    button: {
+      width: 260,
+      height: 260,
+      borderRadius: 130,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 5,
+      elevation: 20,
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.6,
+      shadowRadius: 16,
+    },
+    buttonActive: {
+      backgroundColor: C.activeRed,
+      borderColor: '#CC0000',
+      shadowColor: C.activeRed,
+    },
+    buttonInactive: {
+      backgroundColor: C.gold,
+      borderColor: C.goldDark,
+      shadowColor: C.gold,
+    },
+    seatRing: {
+      width: 230,
+      height: 230,
+      borderRadius: 115,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 6,
+    },
+    seatRingActive: {
+      borderColor: 'rgba(255,255,255,0.3)',
+      backgroundColor: 'rgba(0,0,0,0.15)',
+    },
+    seatRingInactive: {
+      borderColor: 'rgba(139,90,43,0.4)',
+      backgroundColor: 'rgba(0,0,0,0.1)',
+    },
+    innerBowl: {
+      width: 190,
+      height: 190,
+      borderRadius: 95,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 3,
+    },
+    innerBowlActive: {
+      borderColor: 'rgba(255,255,255,0.15)',
+      backgroundColor: 'rgba(0,0,0,0.1)',
+    },
+    innerBowlInactive: {
+      borderColor: 'rgba(139,90,43,0.25)',
+      backgroundColor: 'rgba(27,14,7,0.2)',
+    },
+    poopEmoji: { fontSize: 48, marginBottom: 4 },
+    mainLabel: { fontSize: 22, fontWeight: '900', textAlign: 'center', letterSpacing: 2 },
+    mainLabelActive: { color: '#FFFFFF' },
+    mainLabelInactive: { color: C.darkBg },
+    subLabel: { color: 'rgba(27,14,7,0.6)', fontSize: 13, marginTop: 4, fontWeight: '700' },
+    subLabelActive: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 4, fontWeight: '700' },
+  });
+}

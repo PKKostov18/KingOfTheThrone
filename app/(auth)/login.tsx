@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useAuthStore } from '../../src/store/useAuthStore';
-import { Colors } from '../../src/constants/Colors';
+import { useColors } from '../../src/hooks/useColors';
 
 export default function LoginScreen() {
   const [isRegister, setIsRegister] = useState(false);
@@ -20,6 +20,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
+  const C = useColors();
 
   const { signIn, signUp, loading } = useAuthStore();
 
@@ -28,11 +29,8 @@ export default function LoginScreen() {
       Alert.alert('Error', 'Please fill in email and password.');
       return;
     }
-
     const { error } = await signIn(email.trim(), password);
-    if (error) {
-      Alert.alert('Sign In Error', error);
-    }
+    if (error) Alert.alert('Sign In Error', error);
   }
 
   async function handleSignUp() {
@@ -40,22 +38,18 @@ export default function LoginScreen() {
       Alert.alert('Error', 'Please fill in all fields.');
       return;
     }
-
     if (username.length < 3) {
       Alert.alert('Error', 'Username must be at least 3 characters.');
       return;
     }
-
     if (password.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters.');
       return;
     }
-
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match!');
       return;
     }
-
     const { error } = await signUp(email.trim(), password, username.trim());
     if (error) {
       Alert.alert('Sign Up Error', error);
@@ -73,6 +67,8 @@ export default function LoginScreen() {
     setPassword('');
     setConfirmPassword('');
   }
+
+  const styles = useMemo(() => makeStyles(C), [C]);
 
   return (
     <KeyboardAvoidingView
@@ -110,7 +106,7 @@ export default function LoginScreen() {
                 onChangeText={setUsername}
                 value={username}
                 placeholder="Royal Name"
-                placeholderTextColor={Colors.textMuted}
+                placeholderTextColor={C.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}
                 style={styles.input}
@@ -124,7 +120,7 @@ export default function LoginScreen() {
               onChangeText={setEmail}
               value={email}
               placeholder="email@address.com"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={C.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
@@ -138,7 +134,7 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               value={password}
               placeholder="Password"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={C.textMuted}
               secureTextEntry
               autoCapitalize="none"
               style={styles.input}
@@ -152,7 +148,7 @@ export default function LoginScreen() {
                 onChangeText={setConfirmPassword}
                 value={confirmPassword}
                 placeholder="Confirm password"
-                placeholderTextColor={Colors.textMuted}
+                placeholderTextColor={C.textMuted}
                 secureTextEntry
                 autoCapitalize="none"
                 style={styles.input}
@@ -169,7 +165,7 @@ export default function LoginScreen() {
             style={styles.primaryButton}
           >
             {loading ? (
-              <ActivityIndicator color={Colors.darkBg} />
+              <ActivityIndicator color={C.darkBg} />
             ) : (
               <Text style={styles.primaryText}>
                 {isRegister ? '👑 Create Account' : '🚀 Sign In'}
@@ -192,113 +188,61 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: Colors.darkBg,
-  },
-  container: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 40,
-  },
-  decoEmoji: {
-    fontSize: 30,
-    opacity: 0.12,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  logoCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: Colors.goldMuted,
-    borderWidth: 3,
-    borderColor: Colors.gold,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  logoEmoji: {
-    fontSize: 44,
-  },
-  crownEmoji: {
-    fontSize: 24,
-    position: 'absolute',
-    top: -8,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: '900',
-    color: Colors.gold,
-    textAlign: 'center',
-    letterSpacing: 1,
-  },
-  subtitle: {
-    color: Colors.textSecondary,
-    marginTop: 8,
-    fontSize: 15,
-  },
-  form: {
-    width: '100%',
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.cardBg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-  },
-  inputIcon: {
-    fontSize: 18,
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    paddingVertical: 16,
-    color: Colors.textPrimary,
-    fontSize: 16,
-  },
-  inputSpacing: {
-    marginTop: 12,
-  },
-  actions: {
-    width: '100%',
-    marginTop: 32,
-  },
-  primaryButton: {
-    backgroundColor: Colors.gold,
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 8,
-    shadowColor: Colors.gold,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-  },
-  primaryText: {
-    color: Colors.darkBg,
-    fontWeight: '800',
-    fontSize: 18,
-    letterSpacing: 0.5,
-  },
-  secondaryButton: {
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-  },
-  secondaryText: {
-    color: Colors.textMuted,
-    fontWeight: '600',
-    fontSize: 15,
-  },
-});
+function makeStyles(C: any) {
+  return StyleSheet.create({
+    flex: { flex: 1, backgroundColor: C.darkBg },
+    container: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 24,
+      paddingVertical: 40,
+    },
+    decoEmoji: { fontSize: 30, opacity: 0.12 },
+    header: { alignItems: 'center', marginBottom: 40 },
+    logoCircle: {
+      width: 100,
+      height: 100,
+      borderRadius: 50,
+      backgroundColor: C.goldMuted,
+      borderWidth: 3,
+      borderColor: C.gold,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    logoEmoji: { fontSize: 44 },
+    crownEmoji: { fontSize: 24, position: 'absolute', top: -8 },
+    title: { fontSize: 30, fontWeight: '900', color: C.gold, textAlign: 'center', letterSpacing: 1 },
+    subtitle: { color: C.textSecondary, marginTop: 8, fontSize: 15 },
+    form: { width: '100%' },
+    inputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: C.cardBg,
+      borderWidth: 1,
+      borderColor: C.border,
+      borderRadius: 14,
+      paddingHorizontal: 14,
+    },
+    inputIcon: { fontSize: 18, marginRight: 10 },
+    input: { flex: 1, paddingVertical: 16, color: C.textPrimary, fontSize: 16 },
+    inputSpacing: { marginTop: 12 },
+    actions: { width: '100%', marginTop: 32 },
+    primaryButton: {
+      backgroundColor: C.gold,
+      paddingVertical: 16,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      elevation: 8,
+      shadowColor: C.gold,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+    },
+    primaryText: { color: C.darkBg, fontWeight: '800', fontSize: 18, letterSpacing: 0.5 },
+    secondaryButton: { paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
+    secondaryText: { color: C.textMuted, fontWeight: '600', fontSize: 15 },
+  });
+}
