@@ -5,12 +5,28 @@
     "version": "1.0.0",
     "scheme": "king-of-the-throne",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSUserTrackingUsageDescription": "This allows King of the Throne to deliver personalized ads and improve your experience."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1B0E07"
+      }
     },
     "plugins": [
       "expo-router",
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      "expo-tracking-transparency",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-xxxxxxxxxxxxxxxx~yyyyyyyyyy",
+          "iosAppId": "ca-app-pub-xxxxxxxxxxxxxxxx~zzzzzzzzzz"
+        }
+      ]
     ]
   }
 }

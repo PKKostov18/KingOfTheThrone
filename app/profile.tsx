@@ -10,7 +10,9 @@ import {
   ScrollView,
   Modal,
   FlatList,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { useColors } from '../src/hooks/useColors';
@@ -23,7 +25,7 @@ import { AVATARS, getAvailableAvatars, getLockedAvatars, getAvatarById, type Ava
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { profile, user, updateProfile, signOut, loading, fetchProfile } = useAuthStore();
+  const { profile, user, updateProfile, uploadAvatar, signOut, loading, fetchProfile } = useAuthStore();
   const [username, setUsername] = useState(profile?.username || '');
   const [saving, setSaving] = useState(false);
   const C = useColors();
@@ -128,8 +130,40 @@ export default function ProfileScreen() {
     );
   }
 
-  const avatarEmoji = getAvatarById(currentAvatar).emoji;
+  const isPhotoAvatar = currentAvatar.startsWith('http');
+  const avatarEmoji = isPhotoAvatar ? '💩' : (getAvatarById(currentAvatar)?.emoji ?? '💩');
   const styles = useMemo(() => makeStyles(C), [C]);
+
+  const [uploading, setUploading] = useState(false);
+
+  async function handlePickPhoto() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow access to your photo library to upload an avatar.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+
+    setUploading(true);
+    try {
+      await uploadAvatar(result.assets[0].uri);
+      setCurrentAvatar(profile?.avatar_url ?? currentAvatar);
+      // Re-fetch profile to get updated URL
+      await fetchProfile();
+    } catch (err: any) {
+      Alert.alert('Upload Failed', err.message ?? 'Could not upload photo.');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <ScrollView style={styles.scrollView} contentContainerStyle={styles.container}>
@@ -146,7 +180,11 @@ export default function ProfileScreen() {
           activeOpacity={0.7}
         >
           <View style={styles.avatar}>
-            <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
+            {isPhotoAvatar ? (
+              <Image source={{ uri: currentAvatar }} style={styles.avatarPhoto} />
+            ) : (
+              <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
+            )}
             <Text style={styles.crownOverlay}>👑</Text>
           </View>
           <View style={styles.editBadge}>
@@ -321,8 +359,30 @@ export default function ProfileScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Choose Your Avatar</Text>
             <Text style={styles.modalSubtitle}>
-              Higher levels unlock more avatars!
+              Pick an emoji or upload from your gallery!
             </Text>
+
+            {/* Upload from gallery button */}
+            <TouchableOpacity
+              style={styles.photoUploadButton}
+              onPress={() => {
+                setShowAvatarPicker(false);
+                setTimeout(() => handlePickPhoto(), 400);
+              }}
+              activeOpacity={0.7}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={C.darkBg} />
+              ) : (
+                <>
+                  <Text style={styles.photoUploadIcon}>📷</Text>
+                  <Text style={styles.photoUploadText}>Upload from Gallery</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <Text style={[styles.modalSubtitle, { marginBottom: 12 }]}>— or pick an emoji —</Text>
 
             <ScrollView style={{ maxHeight: 400 }}>
               <View style={styles.avatarGrid}>
@@ -452,6 +512,11 @@ function makeStyles(C: any) {
       alignItems: 'center',
     },
     avatarEmoji: { fontSize: 48 },
+    avatarPhoto: {
+      width: 96,
+      height: 96,
+      borderRadius: 48,
+    },
     crownOverlay: { fontSize: 28, position: 'absolute', top: -10 },
     editBadge: {
       position: 'absolute',
@@ -674,6 +739,20 @@ function makeStyles(C: any) {
       right: 6,
     },
     avatarPickerName: { fontSize: 9, color: C.textMuted, marginTop: 4, fontWeight: '600', textAlign: 'center' },
+
+    // Photo upload
+    photoUploadButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: C.gold,
+      borderRadius: 14,
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      marginBottom: 16,
+    },
+    photoUploadIcon: { fontSize: 18, marginRight: 8 },
+    photoUploadText: { color: C.darkBg, fontSize: 15, fontWeight: '800' },
 
     // Theme picker items
     themeItem: {

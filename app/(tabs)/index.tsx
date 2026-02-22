@@ -1,520 +1,618 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
-  Alert,
-  Modal,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  TextInput,
+  Animated,
+  Vibration,
+  Alert,
+  AppState,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useSessionStore } from '../../src/store/useSessionStore';
-import { useAuthStore } from '../../src/store/useAuthStore';
-import BigRedButton from '../../src/components/BigRedButton';
-import { supabase } from '../../src/lib/supabase';
-import { BRISTOL_SCALE, FUN_RATINGS } from '../../src/constants/BristolScale';
 import { useColors } from '../../src/hooks/useColors';
-import { getLevelForPoops, getNextLevel, getLevelProgress, getPoopsToNextLevel } from '../../src/constants/Levels';
-import { getBadgesForLevel, checkMilestoneBadges, getBadgeById } from '../../src/constants/Badges';
+import { useGameStore, UPGRADES, type UpgradeDef } from '../../src/store/useGameStore';
+import { useAuthStore } from '../../src/store/useAuthStore';
+import { getAvatarById } from '../../src/constants/Avatars';
 
-export default function HomeScreen() {
-  const router = useRouter();
-  const { isActive, startTime, startSession, endSession } = useSessionStore();
-  const { user, profile, fetchProfile } = useAuthStore();
-  const [elapsed, setElapsed] = useState(0);
-  const C = useColors();
+// ─── Number formatter ──────────────────────────────────────────
+function fmt(n: number): string {
+  if (n >= 1_000_000_000_000) return (n / 1_000_000_000_000).toFixed(1) + 'T';
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 10_000) return (n / 1_000).toFixed(1) + 'K';
+  return Math.floor(n).toLocaleString();
+}
 
-  // Modal for Bristol Scale + Fun Rating after stop
-  const [showModal, setShowModal] = useState(false);
-  const [pendingDuration, setPendingDuration] = useState(0);
-  const [selectedBristol, setSelectedBristol] = useState(4);
-  const [selectedFun, setSelectedFun] = useState(3);
-  const [description, setDescription] = useState('');
-  const [saving, setSaving] = useState(false);
+function fmtTime(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
 
-  // Timer
+// ─── Floating Text Component ───────────────────────────────────
+function FloatingText({ value, color }: { value: string; color: string }) {
+  const anim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
-    if (isActive && startTime) {
-      interval = setInterval(() => {
-        const now = new Date();
-        const diffInSeconds = Math.floor(
-          (now.getTime() - new Date(startTime).getTime()) / 1000
-        );
-        setElapsed(diffInSeconds);
-      }, 1000);
-    } else {
-      setElapsed(0);
-    }
+  return (
+    <Animated.Text
+      style={{
+        position: 'absolute',
+        fontSize: 24,
+        fontWeight: '900',
+        color,
+        opacity: anim.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 0.8, 0] }),
+        transform: [
+          { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [0, -90] }) },
+          { scale: anim.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0.5, 1.3, 0.8] }) },
+        ],
+      }}
+    >
+      {value}
+    </Animated.Text>
+  );
+}
 
-    return () => clearInterval(interval);
-  }, [isActive, startTime]);
+// ─── Main Screen ───────────────────────────────────────────────
+export default function EmpireScreen() {
+  const router = useRouter();
+  const C = useColors();
+  const styles = useMemo(() => makeStyles(C), [C]);
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  const game = useGameStore();
+  const { profile } = useAuthStore();
 
-  // Button press handler
-  const handlePress = () => {
-    if (!isActive) {
-      startSession();
-    } else {
-      if (!startTime) return;
+  // Get avatar
+  const avatarUrl = profile?.avatar_url;
+  const isPhotoAvatar = avatarUrl?.startsWith('http') ?? false;
+  const avatarEmoji = useMemo(() => {
+    if (isPhotoAvatar) return '💩';
+    const id = avatarUrl ?? 'poop';
+    return getAvatarById(id)?.emoji ?? '💩';
+  }, [avatarUrl, isPhotoAvatar]);
 
-      const endTime = new Date();
-      const durationSeconds = Math.floor(
-        (endTime.getTime() - new Date(startTime).getTime()) / 1000
+  // Floating +X texts
+  const [floaters, setFloaters] = useState<{ id: number; value: string }[]>([]);
+  const floatId = useRef(0);
+
+  // Boost timer display
+  const [boostSec, setBoostSec] = useState(game.getBoostRemaining());
+
+  // Hydrate game state from disk on mount
+  useEffect(() => {
+    game.hydrate();
+  }, []);
+
+  // Process offline progress after hydration
+  useEffect(() => {
+    if (!game.hydrated) return;
+    const { earned, seconds } = game.processOfflineProgress();
+    if (earned > 0 && seconds > 60) {
+      Alert.alert(
+        '💰 Welcome Back!',
+        `Your empire earned $${fmt(earned)} while you were away (${fmtTime(seconds)})`,
       );
-
-      setPendingDuration(durationSeconds);
-      setSelectedBristol(4);
-      setSelectedFun(3);
-      setDescription('');
-      setShowModal(true);
     }
-  };
+  }, [game.hydrated]);
 
-  // Award badges helper
-  const awardBadges = async (badgeIds: string[], userId: string) => {
-    if (badgeIds.length === 0) return [];
+  // Passive income tick every second + persist every 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      game.tick();
+      setBoostSec(game.getBoostRemaining());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-    // Fetch already-earned badges
-    const { data: existing } = await supabase
-      .from('achievements')
-      .select('badge_name')
-      .eq('user_id', userId)
-      .in('badge_name', badgeIds);
+  useEffect(() => {
+    const persistInterval = setInterval(() => game.persist(), 30_000);
+    return () => clearInterval(persistInterval);
+  }, []);
 
-    const alreadyEarned = new Set((existing ?? []).map((a: any) => a.badge_name));
-    const newBadgeIds = badgeIds.filter((id) => !alreadyEarned.has(id));
+  // Save on background
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        game.persist();
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
-    if (newBadgeIds.length === 0) return [];
+  // Toilet tap animation
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
-    const rows = newBadgeIds.map((badge_name) => ({
-      user_id: userId,
-      badge_name,
-      unlocked_at: new Date().toISOString(),
-    }));
+  const handleTap = useCallback(() => {
+    game.tap();
+    Vibration.vibrate(15);
 
-    await supabase.from('achievements').insert(rows);
-    return newBadgeIds;
-  };
+    Animated.sequence([
+      Animated.timing(scaleAnim, { toValue: 0.88, duration: 60, useNativeDriver: true }),
+      Animated.spring(scaleAnim, { toValue: 1, friction: 3, tension: 200, useNativeDriver: true }),
+    ]).start();
 
-  // Save entry to Supabase
-  const handleSaveEntry = async () => {
-    if (!user) {
-      Alert.alert('Error', 'No user logged in!');
+    const id = ++floatId.current;
+    const cp = game.getClickPower();
+    setFloaters((prev) => [...prev.slice(-4), { id, value: `+${fmt(cp)}` }]);
+    setTimeout(() => setFloaters((prev) => prev.filter((f) => f.id !== id)), 850);
+  }, [game, scaleAnim]);
+
+  const handlePrestige = () => {
+    const reward = game.getPrestigeReward();
+    if (reward <= 0) {
+      Alert.alert('Not Yet!', 'You need at least $1M lifetime coins to prestige.');
       return;
     }
-
-    setSaving(true);
-
-    try {
-      const { error } = await supabase.from('entries').insert({
-        user_id: user.id,
-        duration_seconds: pendingDuration,
-        bristol_scale: selectedBristol,
-        fun_rating: selectedFun,
-        description: description.trim() || null,
-      });
-
-      if (error) throw error;
-
-      // Update total_poops in profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('total_poops, level')
-        .eq('id', user.id)
-        .single();
-
-      const oldPoops = profileData?.total_poops || 0;
-      const newPoops = oldPoops + 1;
-      const oldLevel = profileData?.level || 1;
-      const newLevelConfig = getLevelForPoops(newPoops);
-      const newLevel = newLevelConfig.level;
-      const didLevelUp = newLevel > oldLevel;
-
-      await supabase
-        .from('profiles')
-        .update({ total_poops: newPoops, level: newLevel })
-        .eq('id', user.id);
-
-      // --- Badge awarding ---
-      const badgesToCheck: string[] = [];
-
-      // Level badges
-      if (didLevelUp) {
-        for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
-          const levelBadges = getBadgesForLevel(lvl);
-          badgesToCheck.push(...levelBadges.map((b) => b.id));
-        }
-      }
-
-      // First poop badge
-      if (newPoops === 1) {
-        badgesToCheck.push('first_flush');
-      }
-
-      // Milestone badges
-      const milestones = checkMilestoneBadges(
-        pendingDuration,
-        selectedBristol,
-        selectedFun,
-        newPoops,
-      );
-      badgesToCheck.push(...milestones);
-
-      const newlyEarned = await awardBadges(badgesToCheck, user.id);
-      const badgeText = newlyEarned.length > 0
-        ? `\n\n🏅 New badge${newlyEarned.length > 1 ? 's' : ''}: ${newlyEarned.map((id) => {
-            const b = getBadgeById(id);
-            return b ? `${b.emoji} ${b.name}` : id;
-          }).join(', ')}`
-        : '';
-
-      // Reload profile for updated stats
-      await fetchProfile();
-
-      if (didLevelUp) {
-        Alert.alert(
-          `🎉 LEVEL UP! Level ${newLevel}! 🎉`,
-          `You are now: ${newLevelConfig.emoji} ${newLevelConfig.title}!\n\n🎁 Reward: ${newLevelConfig.rewardEmoji} ${newLevelConfig.reward}\n\nSession: ${formatTime(pendingDuration)} ${BRISTOL_SCALE[selectedBristol - 1].emoji}${badgeText}`,
-        );
-      } else {
-        const remaining = getPoopsToNextLevel(newPoops);
-        Alert.alert(
-          'Royal Deposit! 💩👑',
-          `Session recorded: ${formatTime(pendingDuration)}\n${BRISTOL_SCALE[selectedBristol - 1].emoji} ${BRISTOL_SCALE[selectedBristol - 1].name}\nRating: ${FUN_RATINGS[selectedFun - 1].emoji}${remaining !== null ? `\n\n${remaining} more to next level!` : ''}${badgeText}`,
-        );
-      }
-    } catch (error: any) {
-      Alert.alert('Save Error', error.message);
-    } finally {
-      setSaving(false);
-      setShowModal(false);
-      endSession();
-    }
+    Alert.alert(
+      '🪠 Flush the Empire?',
+      `Reset all upgrades & coins.\nGain ${reward} Golden Plunger${reward > 1 ? 's' : ''} (+${reward * 2}% permanent bonus).\n\nThis cannot be undone!`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'FLUSH IT!',
+          style: 'destructive',
+          onPress: () => {
+            game.prestige();
+            game.persist();
+          },
+        },
+      ],
+    );
   };
 
-  const handleCancelEntry = () => {
-    setShowModal(false);
-    endSession();
-  };
-
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const visibleUpgrades = game.getVisibleUpgrades();
+  const clickUpgrades = visibleUpgrades.filter((u) => u.type === 'click');
+  const passiveUpgrades = visibleUpgrades.filter((u) => u.type === 'passive');
+  const multiplier = game.getGlobalMultiplier();
+  const prestigeReward = game.getPrestigeReward();
+  const isBoosted = game.isPoopBoosted();
 
   return (
     <View style={styles.screen}>
-      {/* Profile Button */}
-      <TouchableOpacity
-        style={styles.profileButton}
-        onPress={() => router.push('/profile' as any)}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.profileEmoji}>💩</Text>
-        <Text style={styles.profileCrown}>👑</Text>
-      </TouchableOpacity>
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.profileButton}
+          onPress={() => router.push('/profile' as any)}
+          activeOpacity={0.7}
+        >
+          {isPhotoAvatar ? (
+            <Image source={{ uri: avatarUrl! }} style={styles.profilePhoto} />
+          ) : (
+            <Text style={styles.profileEmoji}>{avatarEmoji}</Text>
+          )}
+          <Text style={styles.profileCrown}>👑</Text>
+        </TouchableOpacity>
 
-      {/* Floating deco emojis */}
-      <Text style={[styles.decoEmoji, { top: 60, left: 20 }]}>💩</Text>
-      <Text style={[styles.decoEmoji, { top: 90, right: 30 }]}>🚽</Text>
-      <Text style={[styles.decoEmoji, { bottom: 120, left: 40 }]}>📰</Text>
-      <Text style={[styles.decoEmoji, { bottom: 140, right: 25 }]}>🧻</Text>
-      <Text style={[styles.decoEmoji, { top: 160, left: 60 }]}>👑</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>🏰 Bathroom Empire</Text>
+        </View>
 
-      {/* Title */}
-      <View style={styles.titleContainer}>
-        <Text style={styles.crownEmoji}>👑</Text>
-        <Text style={styles.titleText}>King of the Throne</Text>
-        <Text style={styles.subtitleText}>
-          {isActive ? '🚽 Royal session in progress...' : 'Ready to claim your throne?'}
-        </Text>
-        {profile && (() => {
-          const totalPoops = profile.total_poops ?? 0;
-          const levelConfig = getLevelForPoops(totalPoops);
-          const progress = getLevelProgress(totalPoops);
-          const remaining = getPoopsToNextLevel(totalPoops);
-          const nextLevel = getNextLevel(levelConfig.level);
-          return (
-            <>
-              <View style={styles.streakBadge}>
-                <Text style={styles.streakText}>
-                  {levelConfig.emoji} {levelConfig.title}  •  Level {levelConfig.level}
-                </Text>
-              </View>
-              <View style={styles.xpBarContainer}>
-                <View style={styles.xpBarBg}>
-                  <View style={[styles.xpBarFill, { width: `${Math.round(progress * 100)}%` as any }]} />
-                </View>
-                <Text style={styles.xpText}>
-                  {remaining !== null
-                    ? `💩 ${totalPoops} / ${nextLevel?.requiredPoops} (${remaining} to go)`
-                    : `💩 ${totalPoops} — MAX LEVEL! 👑`}
-                </Text>
-              </View>
-            </>
-          );
-        })()}
+        <TouchableOpacity onPress={handlePrestige} activeOpacity={0.7} style={styles.prestigeBtn}>
+          <Text style={styles.prestigeIcon}>🪠</Text>
+          <Text style={styles.prestigeCount}>{game.goldenPlungers}</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Button */}
-      <BigRedButton isActive={isActive} onPress={handlePress} />
+      {/* ── Multiplier / Boost Bar ── */}
+      <View style={styles.boostBar}>
+        <Text style={styles.multiplierText}>
+          ×{multiplier.toFixed(2)} multiplier
+        </Text>
+        {game.goldenPlungers > 0 && (
+          <Text style={styles.plungerInfo}>🪠 {game.goldenPlungers} (+{game.goldenPlungers * 2}%)</Text>
+        )}
+        {isBoosted && (
+          <View style={styles.boostChip}>
+            <Text style={styles.boostChipText}>💩 2× POOP BOOST — {fmtTime(boostSec)}</Text>
+          </View>
+        )}
+      </View>
 
-      {/* Timer */}
-      {isActive && (
-        <View style={styles.timerContainer}>
-          <Text style={styles.timerLabel}>⏱️ TIME ON THRONE</Text>
-          <Text style={styles.timerText}>{formatTime(elapsed)}</Text>
+      {/* ── Coin Display ── */}
+      <View style={styles.coinBar}>
+        <Text style={styles.coinAmount}>$ {fmt(game.coins)}</Text>
+        <View style={styles.statsRow}>
+          <Text style={styles.statChip}>👆 {fmt(game.getClickPower())}/tap</Text>
+          <Text style={styles.statChip}>⏱️ {fmt(game.getPassiveIncome())}/sec</Text>
         </View>
+      </View>
+
+      {/* ── Golden Toilet ── */}
+      <View style={styles.toiletArea}>
+        <View style={styles.floaterContainer}>
+          {floaters.map((f) => (
+            <FloatingText key={f.id} value={f.value} color={C.gold} />
+          ))}
+        </View>
+
+        <TouchableOpacity onPress={handleTap} activeOpacity={0.85}>
+          <Animated.View style={[styles.toiletOuter, { transform: [{ scale: scaleAnim }] }]}>
+            <View style={styles.toiletInner}>
+              <Text style={styles.toiletEmoji}>🚽</Text>
+              <Text style={styles.toiletCrown}>👑</Text>
+            </View>
+          </Animated.View>
+        </TouchableOpacity>
+
+        <Text style={styles.tapHint}>TAP THE THRONE!</Text>
+      </View>
+
+      {/* ── Prestige banner ── */}
+      {prestigeReward > 0 && (
+        <TouchableOpacity style={styles.prestigeBanner} onPress={handlePrestige} activeOpacity={0.8}>
+          <Text style={styles.prestigeBannerText}>
+            🪠 FLUSH FOR {prestigeReward} GOLDEN PLUNGER{prestigeReward > 1 ? 'S' : ''}
+          </Text>
+        </TouchableOpacity>
       )}
 
-      {/* ======= MODAL: Bristol + Rating + Note ======= */}
-      <Modal visible={showModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>💩 Rate Your Royal Deposit</Text>
-              <View style={styles.durationBadge}>
-                <Text style={styles.durationText}>
-                  🕐 {formatTime(pendingDuration)}
-                </Text>
-              </View>
-
-              {/* Bristol Scale */}
-              <Text style={styles.sectionLabel}>🔬 Type (Bristol Scale)</Text>
-              <View style={styles.optionRow}>
-                {BRISTOL_SCALE.map((item) => (
-                  <TouchableOpacity
-                    key={item.type}
-                    onPress={() => setSelectedBristol(item.type)}
-                    style={[
-                      styles.bristolOption,
-                      selectedBristol === item.type && styles.bristolSelected,
-                    ]}
-                  >
-                    <Text style={styles.bristolEmoji}>{item.emoji}</Text>
-                    <Text
-                      style={[
-                        styles.bristolLabel,
-                        selectedBristol === item.type && styles.bristolLabelSelected,
-                      ]}
-                    >
-                      {item.type}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={styles.bristolDesc}>
-                {BRISTOL_SCALE[selectedBristol - 1].description}
-              </Text>
-
-              {/* Fun Rating */}
-              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>
-                ⭐ Experience Rating
-              </Text>
-              <View style={styles.optionRow}>
-                {FUN_RATINGS.map((item) => (
-                  <TouchableOpacity
-                    key={item.value}
-                    onPress={() => setSelectedFun(item.value)}
-                    style={[
-                      styles.funOption,
-                      selectedFun === item.value && styles.funSelected,
-                    ]}
-                  >
-                    <Text style={styles.funEmoji}>{item.emoji}</Text>
-                    <Text
-                      style={[
-                        styles.funLabel,
-                        selectedFun === item.value && styles.funLabelSelected,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Note */}
-              <Text style={[styles.sectionLabel, { marginTop: 20 }]}>
-                📝 Royal Notes (optional)
-              </Text>
-              <TextInput
-                value={description}
-                onChangeText={setDescription}
-                placeholder="E.g. 'That spicy food was a mistake...'"
-                placeholderTextColor={C.textMuted}
-                multiline
-                numberOfLines={3}
-                style={styles.noteInput}
+      {/* ── Upgrades ── */}
+      <View style={styles.upgradesContainer}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.upgradesList}>
+          {clickUpgrades.length > 0 && (
+            <Text style={styles.upgradeSection}>👆 TAP POWER</Text>
+          )}
+          {clickUpgrades.map((u) => {
+            const owned = game.upgradeLevels[u.id] ?? 0;
+            const cost = game.getUpgradeCost(u.id);
+            return (
+              <UpgradeCard
+                key={u.id}
+                def={u}
+                owned={owned}
+                cost={cost}
+                canAfford={game.coins >= cost && owned < u.maxLevel}
+                maxed={owned >= u.maxLevel}
+                onBuy={() => game.buyUpgrade(u.id)}
+                C={C}
+                styles={styles}
               />
+            );
+          })}
 
-              {/* Buttons */}
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  onPress={handleSaveEntry}
-                  disabled={saving}
-                  style={styles.saveButton}
-                >
-                  <Text style={styles.saveText}>
-                    {saving ? '⏳ Flushing...' : '👑 Log Royal Deposit'}
-                  </Text>
-                </TouchableOpacity>
+          {passiveUpgrades.length > 0 && (
+            <Text style={[styles.upgradeSection, { marginTop: 16 }]}>⏱️ PASSIVE INCOME</Text>
+          )}
+          {passiveUpgrades.map((u) => {
+            const owned = game.upgradeLevels[u.id] ?? 0;
+            const cost = game.getUpgradeCost(u.id);
+            return (
+              <UpgradeCard
+                key={u.id}
+                def={u}
+                owned={owned}
+                cost={cost}
+                canAfford={game.coins >= cost && owned < u.maxLevel}
+                maxed={owned >= u.maxLevel}
+                onBuy={() => game.buyUpgrade(u.id)}
+                C={C}
+                styles={styles}
+              />
+            );
+          })}
 
-                <TouchableOpacity
-                  onPress={handleCancelEntry}
-                  disabled={saving}
-                  style={styles.cancelButton}
-                >
-                  <Text style={styles.cancelText}>Discard</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      </View>
     </View>
   );
 }
 
+// ─── Upgrade Card ──────────────────────────────────────────────
+function UpgradeCard({
+  def,
+  owned,
+  cost,
+  canAfford,
+  maxed,
+  onBuy,
+  C,
+  styles,
+}: {
+  def: UpgradeDef;
+  owned: number;
+  cost: number;
+  canAfford: boolean;
+  maxed: boolean;
+  onBuy: () => void;
+  C: any;
+  styles: any;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.upgradeCard, !canAfford && !maxed && styles.upgradeCardLocked, maxed && styles.upgradeCardMaxed]}
+      onPress={maxed ? undefined : onBuy}
+      activeOpacity={canAfford ? 0.7 : 1}
+    >
+      <Text style={styles.upgradeEmoji}>{def.emoji}</Text>
+      <View style={styles.upgradeInfo}>
+        <Text style={[styles.upgradeName, !canAfford && !maxed && styles.upgradeTextLocked]}>
+          {def.name}
+        </Text>
+        <Text style={[styles.upgradeDesc, !canAfford && !maxed && styles.upgradeTextLocked]}>
+          {def.description}
+        </Text>
+      </View>
+      <View style={styles.upgradeRight}>
+        {maxed ? (
+          <Text style={[styles.upgradeCost, { color: C.successGreen }]}>MAX</Text>
+        ) : (
+          <Text style={[styles.upgradeCost, canAfford ? { color: C.gold } : { color: C.textMuted }]}>
+            $ {fmt(cost)}
+          </Text>
+        )}
+        {owned > 0 && (
+          <View style={[styles.ownedBadge, maxed && { backgroundColor: 'rgba(76,175,80,0.15)' }]}>
+            <Text style={[styles.ownedText, maxed && { color: C.successGreen }]}>
+              Lv.{owned}{maxed ? '' : `/${def.maxLevel}`}
+            </Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Styles ────────────────────────────────────────────────────
 function makeStyles(C: any) {
   return StyleSheet.create({
     screen: {
       flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
       backgroundColor: C.darkBg,
     },
+
+    // Header
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingTop: 54,
+      paddingHorizontal: 16,
+      paddingBottom: 4,
+    },
     profileButton: {
-      position: 'absolute',
-      top: 52,
-      right: 20,
-      width: 48,
-      height: 48,
-      borderRadius: 24,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: C.cardBg,
       borderWidth: 2,
       borderColor: C.gold,
       justifyContent: 'center',
       alignItems: 'center',
-      zIndex: 10,
-      elevation: 8,
-      shadowColor: C.gold,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
     },
-    profileEmoji: { fontSize: 22 },
-    profileCrown: { fontSize: 12, position: 'absolute', top: -2 },
-    decoEmoji: { position: 'absolute', fontSize: 28, opacity: 0.15 },
-    titleContainer: { position: 'absolute', top: 64, alignItems: 'center' },
-    crownEmoji: { fontSize: 40, marginBottom: 4 },
-    titleText: { fontSize: 28, fontWeight: '900', color: C.gold, letterSpacing: 1 },
-    subtitleText: { color: C.textSecondary, marginTop: 6, fontSize: 14 },
-    streakBadge: {
-      marginTop: 12,
-      backgroundColor: C.goldMuted,
-      paddingHorizontal: 16,
-      paddingVertical: 6,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: C.border,
+    profileEmoji: { fontSize: 20 },
+    profilePhoto: { width: 40, height: 40, borderRadius: 20 },
+    profileCrown: { fontSize: 10, position: 'absolute', top: -2 },
+    headerCenter: { flex: 1, alignItems: 'center' },
+    headerTitle: { fontSize: 18, fontWeight: '900', color: C.gold, letterSpacing: 1 },
+    prestigeBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: C.cardBg,
+      borderWidth: 2,
+      borderColor: C.goldDark,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
-    streakText: { color: C.textSecondary, fontSize: 12, fontWeight: '600' },
-    xpBarContainer: { marginTop: 10, alignItems: 'center', width: 220 },
-    xpBarBg: { width: '100%', height: 8, borderRadius: 4, backgroundColor: C.border, overflow: 'hidden' },
-    xpBarFill: { height: '100%', borderRadius: 4, backgroundColor: C.gold },
-    xpText: { color: C.textMuted, fontSize: 10, fontWeight: '600', marginTop: 4 },
-    timerContainer: { marginTop: 28, alignItems: 'center' },
-    timerLabel: { color: C.textMuted, fontSize: 12, fontWeight: '700', letterSpacing: 2, marginBottom: 4 },
-    timerText: { fontSize: 52, fontWeight: '900', color: C.gold, letterSpacing: 4 },
+    prestigeIcon: { fontSize: 18 },
+    prestigeCount: { fontSize: 9, fontWeight: '900', color: C.gold, position: 'absolute', bottom: 2 },
 
-    // Modal
-    modalOverlay: { flex: 1, backgroundColor: C.overlay, justifyContent: 'flex-end' },
-    modalContent: {
+    // Boost bar
+    boostBar: {
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingTop: 4,
+    },
+    multiplierText: {
+      color: C.textSecondary,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    plungerInfo: {
+      color: C.goldDark,
+      fontSize: 11,
+      fontWeight: '700',
+      marginTop: 1,
+    },
+    boostChip: {
+      backgroundColor: 'rgba(76,175,80,0.2)',
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      marginTop: 4,
+    },
+    boostChipText: {
+      color: '#4CAF50',
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 0.5,
+    },
+
+    // Coin bar
+    coinBar: {
+      alignItems: 'center',
+      paddingVertical: 4,
+    },
+    coinAmount: {
+      fontSize: 34,
+      fontWeight: '900',
+      color: C.gold,
+      letterSpacing: 2,
+    },
+    statsRow: {
+      flexDirection: 'row',
+      gap: 16,
+      marginTop: 2,
+    },
+    statChip: {
+      color: C.textSecondary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+
+    // Golden toilet
+    toiletArea: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 8,
+    },
+    floaterContainer: {
+      position: 'absolute',
+      top: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 10,
+    },
+    toiletOuter: {
+      width: 150,
+      height: 150,
+      borderRadius: 75,
+      backgroundColor: C.goldMuted,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 4,
+      borderColor: C.gold,
+      elevation: 20,
+      shadowColor: C.gold,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.5,
+      shadowRadius: 16,
+    },
+    toiletInner: {
+      width: 124,
+      height: 124,
+      borderRadius: 62,
+      backgroundColor: C.cardBg,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 3,
+      borderColor: C.goldDark,
+    },
+    toiletEmoji: { fontSize: 52 },
+    toiletCrown: { fontSize: 26, position: 'absolute', top: 6 },
+    tapHint: {
+      color: C.textMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 3,
+      marginTop: 6,
+    },
+
+    // Prestige banner
+    prestigeBanner: {
+      marginHorizontal: 16,
+      marginBottom: 6,
+      backgroundColor: 'rgba(255, 215, 0, 0.12)',
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: C.gold,
+      paddingVertical: 10,
+      alignItems: 'center',
+    },
+    prestigeBannerText: {
+      color: C.gold,
+      fontSize: 13,
+      fontWeight: '900',
+      letterSpacing: 1,
+    },
+
+    // Upgrades container
+    upgradesContainer: {
+      flex: 1,
       backgroundColor: C.cardBg,
       borderTopLeftRadius: 28,
       borderTopRightRadius: 28,
-      padding: 24,
-      maxHeight: '85%',
       borderTopWidth: 2,
-      borderColor: C.gold,
+      borderColor: C.border,
+      marginTop: 4,
     },
-    modalTitle: { fontSize: 22, fontWeight: '800', color: C.gold, textAlign: 'center' },
-    durationBadge: {
-      alignSelf: 'center',
-      backgroundColor: C.goldMuted,
-      paddingHorizontal: 20,
-      paddingVertical: 8,
-      borderRadius: 20,
-      marginTop: 8,
-      marginBottom: 20,
-      borderWidth: 1,
-      borderColor: C.goldDark,
+    upgradesList: {
+      padding: 16,
     },
-    durationText: { fontSize: 16, color: C.gold, fontWeight: '700' },
-    sectionLabel: { fontSize: 15, fontWeight: '700', color: C.textSecondary, marginBottom: 10 },
-    optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    bristolOption: {
+    upgradeSection: {
+      color: C.textSecondary,
+      fontSize: 13,
+      fontWeight: '800',
+      letterSpacing: 2,
+      marginBottom: 10,
+      marginTop: 4,
+    },
+
+    // Upgrade card
+    upgradeCard: {
+      flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-      borderRadius: 14,
-      borderWidth: 2,
-      borderColor: C.border,
       backgroundColor: C.cardBgLight,
-      minWidth: 44,
-    },
-    bristolSelected: { borderColor: C.gold, backgroundColor: C.goldMuted },
-    bristolEmoji: { fontSize: 22 },
-    bristolLabel: { fontSize: 12, color: C.textMuted, marginTop: 2, fontWeight: '600' },
-    bristolLabelSelected: { color: C.gold },
-    bristolDesc: { fontSize: 14, color: C.textMuted, marginTop: 8, textAlign: 'center', fontStyle: 'italic' },
-    funOption: {
-      alignItems: 'center',
-      paddingVertical: 8,
-      paddingHorizontal: 8,
-      borderRadius: 14,
-      borderWidth: 2,
-      borderColor: C.border,
-      backgroundColor: C.cardBgLight,
-      flex: 1,
-      minWidth: 56,
-    },
-    funSelected: { borderColor: C.gold, backgroundColor: C.goldMuted },
-    funEmoji: { fontSize: 26 },
-    funLabel: { fontSize: 10, color: C.textMuted, marginTop: 2 },
-    funLabelSelected: { color: C.gold, fontWeight: '700' },
-    noteInput: {
-      backgroundColor: C.cardBgLight,
-      borderWidth: 1,
-      borderColor: C.border,
-      borderRadius: 14,
+      borderRadius: 16,
       padding: 14,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: C.border,
+    },
+    upgradeCardLocked: {
+      opacity: 0.5,
+    },
+    upgradeCardMaxed: {
+      opacity: 0.7,
+      borderColor: C.successGreen,
+      borderWidth: 1,
+    },
+    upgradeEmoji: {
+      fontSize: 32,
+      width: 46,
+      textAlign: 'center',
+    },
+    upgradeInfo: {
+      flex: 1,
+      marginLeft: 10,
+    },
+    upgradeName: {
       color: C.textPrimary,
       fontSize: 15,
-      minHeight: 80,
-      textAlignVertical: 'top',
+      fontWeight: '800',
     },
-    modalActions: { marginTop: 24, gap: 12 },
-    saveButton: {
-      backgroundColor: C.gold,
-      paddingVertical: 16,
-      borderRadius: 14,
-      alignItems: 'center',
-      elevation: 6,
-      shadowColor: C.gold,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.4,
-      shadowRadius: 8,
+    upgradeDesc: {
+      color: C.textMuted,
+      fontSize: 12,
+      marginTop: 2,
     },
-    saveText: { color: C.darkBg, fontWeight: '800', fontSize: 17, letterSpacing: 0.5 },
-    cancelButton: { paddingVertical: 12, alignItems: 'center' },
-    cancelText: { color: C.textMuted, fontWeight: '600', fontSize: 15 },
+    upgradeTextLocked: {
+      color: C.textMuted,
+    },
+    upgradeRight: {
+      alignItems: 'flex-end',
+      marginLeft: 8,
+    },
+    upgradeCost: {
+      fontSize: 15,
+      fontWeight: '800',
+    },
+    ownedBadge: {
+      backgroundColor: C.goldMuted,
+      borderRadius: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      marginTop: 4,
+    },
+    ownedText: {
+      color: C.gold,
+      fontSize: 11,
+      fontWeight: '800',
+    },
   });
 }

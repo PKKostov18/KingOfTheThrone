@@ -19,6 +19,9 @@ interface AuthState {
   // Update profile (username, avatar)
   updateProfile: (updates: { username?: string; avatar_url?: string }) => Promise<void>;
 
+  // Upload a photo from gallery and set as avatar
+  uploadAvatar: (imageUri: string) => Promise<void>;
+
   // Sign in with email/password
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
 
@@ -112,6 +115,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Reload profile after update
     await get().fetchProfile();
     set({ loading: false });
+  },
+
+  uploadAvatar: async (imageUri: string) => {
+    const user = get().user;
+    if (!user) throw new Error('Not logged in');
+
+    set({ loading: true });
+
+    try {
+      // Read the file and convert to blob
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+
+      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const filePath = `${user.id}/avatar.${fileExt}`;
+
+      // Upload to Supabase Storage (avatars bucket)
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, blob, {
+          upsert: true,
+          contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      // Append cache-buster so the image refreshes
+      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+
+      // Save the URL to the profile
+      await get().updateProfile({ avatar_url: publicUrl });
+    } catch (err: any) {
+      set({ loading: false });
+      throw new Error(err.message ?? 'Failed to upload avatar');
+    }
   },
 
   signIn: async (email, password) => {

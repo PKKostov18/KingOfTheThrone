@@ -85,20 +85,6 @@ export const LEVEL_BADGES: BadgeConfig[] = [
 // Special milestone badges (non-level)
 export const MILESTONE_BADGES: BadgeConfig[] = [
   {
-    id: 'speed_pooper',
-    name: 'Speed Pooper',
-    emoji: '⚡💩',
-    description: 'Finished a session in under 60 seconds',
-    unlockedAtLevel: 0,
-  },
-  {
-    id: 'marathon_sitter',
-    name: 'Marathon Sitter',
-    emoji: '🪑',
-    description: 'Sat on the throne for over 15 minutes',
-    unlockedAtLevel: 0,
-  },
-  {
     id: 'perfect_form',
     name: 'Perfect Form',
     emoji: '🐍',
@@ -133,6 +119,20 @@ export const MILESTONE_BADGES: BadgeConfig[] = [
     description: 'Completed 100 royal deposits!',
     unlockedAtLevel: 0,
   },
+  {
+    id: 'first_prestige',
+    name: 'First Flush',
+    emoji: '🪠',
+    description: 'Prestiged for the first time!',
+    unlockedAtLevel: 0,
+  },
+  {
+    id: 'poop_booster',
+    name: 'Poop Booster',
+    emoji: '🚀',
+    description: 'Activated your first poop boost',
+    unlockedAtLevel: 0,
+  },
 ];
 
 export const ALL_BADGES: BadgeConfig[] = [...LEVEL_BADGES, ...MILESTONE_BADGES];
@@ -155,20 +155,21 @@ export function getBadgesForLevel(level: number): BadgeConfig[] {
  * Check milestone badges after a session.
  */
 export function checkMilestoneBadges(
-  durationSeconds: number,
   bristolScale: number,
   funRating: number,
   totalPoops: number,
+  timesPrestiged: number,
+  hasPoopBoosted: boolean,
 ): string[] {
   const earned: string[] = [];
 
-  if (durationSeconds < 60) earned.push('speed_pooper');
-  if (durationSeconds > 900) earned.push('marathon_sitter');
   if (bristolScale === 4) earned.push('perfect_form');
   if (funRating === 5) earned.push('five_star_royal');
   if (totalPoops >= 10) earned.push('ten_deposits');
   if (totalPoops >= 50) earned.push('fifty_deposits');
   if (totalPoops >= 100) earned.push('hundred_deposits');
+  if (timesPrestiged >= 1) earned.push('first_prestige');
+  if (hasPoopBoosted) earned.push('poop_booster');
 
   return earned;
 }

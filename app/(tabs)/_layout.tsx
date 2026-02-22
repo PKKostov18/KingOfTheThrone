@@ -16,8 +16,8 @@ export default function TabLayout() {
           backgroundColor: C.cardBg,
           borderTopWidth: 1,
           borderTopColor: C.border,
-          height: 65,
-          paddingBottom: 10,
+          height: 88,
+          paddingBottom: 28,
           paddingTop: 8,
           elevation: 20,
           shadowColor: '#000',
@@ -35,7 +35,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: '🚽 Throne',
+          title: '🏰 Empire',
+          tabBarIcon: ({ color }) => <FontAwesome5 name="chess-rook" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="tracker"
+        options={{
+          title: '💩 Log',
           tabBarIcon: ({ color }) => <FontAwesome5 name="toilet" size={22} color={color} />,
         }}
       />
