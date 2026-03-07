@@ -10,8 +10,16 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
-import mobileAds from 'react-native-google-mobile-ads';
 import { useConsentStore } from '../src/store/useConsentStore';
+
+// Guard: react-native-google-mobile-ads requires a native dev build.
+// In Expo Go the native module is absent, so we gracefully skip it.
+let mobileAds: (() => { initialize: () => Promise<void> }) | null = null;
+try {
+  mobileAds = require('react-native-google-mobile-ads').default;
+} catch {
+  // Native module unavailable (Expo Go) — ads will be skipped
+}
 import { useColors } from '../src/hooks/useColors';
 
 export default function ConsentScreen() {
@@ -35,8 +43,10 @@ export default function ConsentScreen() {
       // 1. Request App Tracking Transparency permission (iOS)
       await requestTrackingPermissionsAsync();
 
-      // 2. Initialize Google Mobile Ads SDK
-      await mobileAds().initialize();
+      // 2. Initialize Google Mobile Ads SDK (skip in Expo Go)
+      if (mobileAds) {
+        await mobileAds().initialize();
+      }
 
       // 3. Save consent to persistent store
       await acceptConsent();

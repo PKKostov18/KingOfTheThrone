@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 
 // ─── Upgrade Definitions ───────────────────────────────────────────────
 export interface UpgradeDef {
@@ -76,6 +77,7 @@ interface GameState {
 
   // Poop boost
   poopBoostUntil: number;   // timestamp (ms) — 0 = no boost
+  lastBoostDate: string;    // ISO date string e.g. '2026-03-07' — tracks once-per-day boost
 
   // Upgrades
   upgradeLevels: Record<string, number>;
@@ -85,6 +87,9 @@ interface GameState {
 
   // Whether state has been loaded from disk
   hydrated: boolean;
+
+  // Whether offline progress was already processed this session
+  offlineProcessed: boolean;
 
   // ── Computed getters ──
   getClickPower: () => number;
@@ -101,7 +106,7 @@ interface GameState {
   tick: () => void;
   buyUpgrade: (id: string) => boolean;
   prestige: () => void;
-  triggerRealLifePoopBoost: () => void;
+  triggerRealLifePoopBoost: () => boolean;  // returns true if boost was activated, false if already used today
   processOfflineProgress: () => { earned: number; seconds: number };
   reset: () => void;
   hydrate: () => Promise<void>;
@@ -117,9 +122,11 @@ const INITIAL_STATE = {
   goldenPlungers: 0,
   timesPrestiged: 0,
   poopBoostUntil: 0,
+  lastBoostDate: '',
   upgradeLevels: {} as Record<string, number>,
   lastTickTimestamp: Date.now(),
   hydrated: false,
+  offlineProcessed: false,
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -233,16 +240,22 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   triggerRealLifePoopBoost: () => {
+    const todayStr = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    if (get().lastBoostDate === todayStr) return false; // already boosted today
+
     const now = Date.now();
     const oneHour = 60 * 60 * 1000;
     const current = get().poopBoostUntil;
-    // Stack: extend from existing end or from now
     const base = current > now ? current : now;
-    set({ poopBoostUntil: base + oneHour });
+    set({ poopBoostUntil: base + oneHour, lastBoostDate: todayStr });
+    return true;
   },
 
   processOfflineProgress: () => {
     const state = get();
+    // Only process once per app session
+    if (state.offlineProcessed) return { earned: 0, seconds: 0 };
+    set({ offlineProcessed: true });
     const now = Date.now();
     const elapsed = now - state.lastTickTimestamp;
     const seconds = Math.min(Math.floor(elapsed / 1000), 8 * 3600); // max 8h
@@ -266,11 +279,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { earned, seconds };
   },
 
-  reset: () => set({ ...INITIAL_STATE, hydrated: true, lastTickTimestamp: Date.now() }),
+  reset: () => set({ ...INITIAL_STATE, hydrated: true, offlineProcessed: true, lastTickTimestamp: Date.now() }),
 
   // ── Persistence ───────────────────────────────────────────
 
   hydrate: async () => {
+    // Only hydrate once per app session
+    if (get().hydrated) return;
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -284,6 +299,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           goldenPlungers: data.goldenPlungers ?? 0,
           timesPrestiged: data.timesPrestiged ?? 0,
           poopBoostUntil: data.poopBoostUntil ?? 0,
+          lastBoostDate: data.lastBoostDate ?? '',
           upgradeLevels: data.upgradeLevels ?? {},
           lastTickTimestamp: data.lastTickTimestamp ?? Date.now(),
           hydrated: true,
@@ -310,6 +326,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           goldenPlungers: s.goldenPlungers,
           timesPrestiged: s.timesPrestiged,
           poopBoostUntil: s.poopBoostUntil,
+          lastBoostDate: s.lastBoostDate,
           upgradeLevels: s.upgradeLevels,
           lastTickTimestamp: Date.now(),
         }),
@@ -319,3 +336,31 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 }));
+
+// ── Global tick & persist (runs regardless of which tab is visible) ──
+
+// Tick every second for passive income
+setInterval(() => {
+  const state = useGameStore.getState();
+  if (state.hydrated) {
+    state.tick();
+  }
+}, 1000);
+
+// Persist every 30 seconds
+setInterval(() => {
+  const state = useGameStore.getState();
+  if (state.hydrated) {
+    state.persist();
+  }
+}, 30_000);
+
+// Persist when app goes to background
+AppState.addEventListener('change', (status) => {
+  if (status === 'background' || status === 'inactive') {
+    const state = useGameStore.getState();
+    if (state.hydrated) {
+      state.persist();
+    }
+  }
+});

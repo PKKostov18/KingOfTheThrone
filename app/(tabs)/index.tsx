@@ -8,14 +8,17 @@ import {
   Animated,
   Vibration,
   Alert,
-  AppState,
   Image,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useColors } from '../../src/hooks/useColors';
 import { useGameStore, UPGRADES, type UpgradeDef } from '../../src/store/useGameStore';
 import { useAuthStore } from '../../src/store/useAuthStore';
+import { useSettingsStore } from '../../src/store/useSettingsStore';
 import { getAvatarById } from '../../src/constants/Avatars';
+import { initAudio, playSfx } from '../../src/lib/sounds';
+import FallingPoop from '../../src/components/FallingPoop';
 
 // ─── Number formatter ──────────────────────────────────────────
 function fmt(n: number): string {
@@ -88,19 +91,31 @@ export default function EmpireScreen() {
   const [floaters, setFloaters] = useState<{ id: number; value: string }[]>([]);
   const floatId = useRef(0);
 
+  // Falling poops
+  const [fallingPoops, setFallingPoops] = useState<number[]>([]);
+  const poopIdRef = useRef(0);
+
+  const removePoop = useCallback((id: number) => {
+    setFallingPoops((prev) => prev.filter((p) => p !== id));
+  }, []);
+
+  const hapticsEnabled = useSettingsStore((s) => s.hapticsEnabled);
+
   // Boost timer display
   const [boostSec, setBoostSec] = useState(game.getBoostRemaining());
 
-  // Hydrate game state from disk on mount
+  // Hydrate game state from disk (no-op if already hydrated)
   useEffect(() => {
     game.hydrate();
+    initAudio();
   }, []);
 
-  // Process offline progress after hydration
+  // Process offline progress after hydration (store guards against double-run)
   useEffect(() => {
     if (!game.hydrated) return;
     const { earned, seconds } = game.processOfflineProgress();
     if (earned > 0 && seconds > 60) {
+      playSfx('coin');
       Alert.alert(
         '💰 Welcome Back!',
         `Your empire earned $${fmt(earned)} while you were away (${fmtTime(seconds)})`,
@@ -108,28 +123,12 @@ export default function EmpireScreen() {
     }
   }, [game.hydrated]);
 
-  // Passive income tick every second + persist every 30s
+  // Update boost timer display (tick + persist are handled globally in the store)
   useEffect(() => {
     const interval = setInterval(() => {
-      game.tick();
       setBoostSec(game.getBoostRemaining());
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const persistInterval = setInterval(() => game.persist(), 30_000);
-    return () => clearInterval(persistInterval);
-  }, []);
-
-  // Save on background
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'background' || state === 'inactive') {
-        game.persist();
-      }
-    });
-    return () => sub.remove();
   }, []);
 
   // Toilet tap animation
@@ -137,7 +136,10 @@ export default function EmpireScreen() {
 
   const handleTap = useCallback(() => {
     game.tap();
-    Vibration.vibrate(15);
+    if (hapticsEnabled) Vibration.vibrate(15);
+
+    // Play tap sound
+    playSfx('tap');
 
     Animated.sequence([
       Animated.timing(scaleAnim, { toValue: 0.88, duration: 60, useNativeDriver: true }),
@@ -148,7 +150,11 @@ export default function EmpireScreen() {
     const cp = game.getClickPower();
     setFloaters((prev) => [...prev.slice(-4), { id, value: `+${fmt(cp)}` }]);
     setTimeout(() => setFloaters((prev) => prev.filter((f) => f.id !== id)), 850);
-  }, [game, scaleAnim]);
+
+    // Spawn a falling poop
+    const poopId = ++poopIdRef.current;
+    setFallingPoops((prev) => [...prev.slice(-12), poopId]);
+  }, [game, scaleAnim, hapticsEnabled]);
 
   const handlePrestige = () => {
     const reward = game.getPrestigeReward();
@@ -167,6 +173,7 @@ export default function EmpireScreen() {
           onPress: () => {
             game.prestige();
             game.persist();
+            playSfx('prestige');
           },
         },
       ],
@@ -182,6 +189,13 @@ export default function EmpireScreen() {
 
   return (
     <View style={styles.screen}>
+      {/* ── Falling Poops Overlay ── */}
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {fallingPoops.map((pid) => (
+          <FallingPoop key={pid} id={pid} onDone={removePoop} />
+        ))}
+      </View>
+
       {/* ── Header ── */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -277,7 +291,10 @@ export default function EmpireScreen() {
                 cost={cost}
                 canAfford={game.coins >= cost && owned < u.maxLevel}
                 maxed={owned >= u.maxLevel}
-                onBuy={() => game.buyUpgrade(u.id)}
+                onBuy={() => {
+                  const success = game.buyUpgrade(u.id);
+                  if (success) playSfx('upgrade');
+                }}
                 C={C}
                 styles={styles}
               />
@@ -298,7 +315,10 @@ export default function EmpireScreen() {
                 cost={cost}
                 canAfford={game.coins >= cost && owned < u.maxLevel}
                 maxed={owned >= u.maxLevel}
-                onBuy={() => game.buyUpgrade(u.id)}
+                onBuy={() => {
+                  const success = game.buyUpgrade(u.id);
+                  if (success) playSfx('upgrade');
+                }}
                 C={C}
                 styles={styles}
               />

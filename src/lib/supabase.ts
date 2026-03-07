@@ -18,7 +18,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // Listen for app state changes to refresh tokens
 AppState.addEventListener('change', (state) => {
   if (state === 'active') {
-    supabase.auth.startAutoRefresh();
+    supabase.auth.startAutoRefresh().catch(() => {});
   } else {
     supabase.auth.stopAutoRefresh();
   }

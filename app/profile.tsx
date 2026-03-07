@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,11 +17,94 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { useColors } from '../src/hooks/useColors';
 import { useThemeStore } from '../src/store/useThemeStore';
+import { useSettingsStore } from '../src/store/useSettingsStore';
+import { updateMusicVolume } from '../src/lib/sounds';
 import { supabase } from '../src/lib/supabase';
 import { getLevelForPoops, getNextLevel, getLevelProgress, getPoopsToNextLevel } from '../src/constants/Levels';
 import { ALL_BADGES, getBadgeById, type BadgeConfig } from '../src/constants/Badges';
 import { THEMES, getAvailableThemes, type AppTheme } from '../src/constants/Themes';
 import { AVATARS, getAvailableAvatars, getLockedAvatars, getAvatarById, type AvatarOption } from '../src/constants/Avatars';
+
+function SoundHapticsSettings({ C, styles }: { C: any; styles: any }) {
+  const masterVolume = useSettingsStore((s) => s.masterVolume);
+  const sfxVolume = useSettingsStore((s) => s.sfxVolume);
+  const musicVolume = useSettingsStore((s) => s.musicVolume);
+  const muted = useSettingsStore((s) => s.muted);
+  const hapticsEnabled = useSettingsStore((s) => s.hapticsEnabled);
+  const { setMasterVolume, setSfxVolume, setMusicVolume, toggleMute, toggleHaptics } = useSettingsStore();
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>🔊 Sound & Haptics</Text>
+
+      <VolumeSetting
+        label="🎵 Master Volume"
+        value={masterVolume}
+        onChange={(v: number) => {
+          setMasterVolume(v);
+          updateMusicVolume();
+        }}
+        C={C}
+        styles={styles}
+      />
+
+      <VolumeSetting
+        label="💥 SFX Volume"
+        value={sfxVolume}
+        onChange={(v: number) => setSfxVolume(v)}
+        C={C}
+        styles={styles}
+      />
+
+      <VolumeSetting
+        label="🎶 Music Volume"
+        value={musicVolume}
+        onChange={(v: number) => {
+          setMusicVolume(v);
+          updateMusicVolume();
+        }}
+        C={C}
+        styles={styles}
+      />
+
+      <TouchableOpacity
+        style={styles.settingToggle}
+        onPress={toggleMute}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.settingLabel}>
+          {muted ? '🔇 Sound: OFF' : '🔊 Sound: ON'}
+        </Text>
+        <View style={[
+          styles.togglePill,
+          muted ? styles.toggleOff : styles.toggleOn,
+        ]}>
+          <Text style={styles.toggleText}>
+            {muted ? 'OFF' : 'ON'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.settingToggle}
+        onPress={toggleHaptics}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.settingLabel}>
+          {hapticsEnabled ? '📳 Haptics: ON' : '📴 Haptics: OFF'}
+        </Text>
+        <View style={[
+          styles.togglePill,
+          hapticsEnabled ? styles.toggleOn : styles.toggleOff,
+        ]}>
+          <Text style={styles.toggleText}>
+            {hapticsEnabled ? 'ON' : 'OFF'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -135,33 +218,49 @@ export default function ProfileScreen() {
   const styles = useMemo(() => makeStyles(C), [C]);
 
   const [uploading, setUploading] = useState(false);
+  const pendingPhotoUpload = useRef(false);
+
+  // Called when the modal finishes dismissing (iOS safe)
+  function onAvatarModalDismiss() {
+    if (pendingPhotoUpload.current) {
+      pendingPhotoUpload.current = false;
+      handlePickPhoto();
+    }
+  }
 
   async function handlePickPhoto() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please allow access to your photo library to upload an avatar.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-
-    if (result.canceled || !result.assets?.[0]?.uri) return;
-
-    setUploading(true);
     try {
-      await uploadAvatar(result.assets[0].uri);
-      setCurrentAvatar(profile?.avatar_url ?? currentAvatar);
-      // Re-fetch profile to get updated URL
-      await fetchProfile();
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow access to your photo library to upload an avatar.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+
+      setUploading(true);
+      try {
+        await uploadAvatar(result.assets[0].uri);
+        // Re-fetch profile to get updated URL
+        await fetchProfile();
+        if (useAuthStore.getState().profile?.avatar_url) {
+          setCurrentAvatar(useAuthStore.getState().profile!.avatar_url!);
+        }
+      } catch (err: any) {
+        Alert.alert('Upload Failed', err.message ?? 'Could not upload photo.');
+      } finally {
+        setUploading(false);
+      }
     } catch (err: any) {
-      Alert.alert('Upload Failed', err.message ?? 'Could not upload photo.');
-    } finally {
-      setUploading(false);
+      console.error('Image picker error:', err);
+      Alert.alert('Error', 'Could not open photo gallery. Please try again.');
     }
   }
 
@@ -346,6 +445,9 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* ====== SOUND & HAPTICS SETTINGS ====== */}
+      <SoundHapticsSettings C={C} styles={styles} />
+
       {/* Sign out */}
       <TouchableOpacity onPress={handleSignOut} style={styles.signOutButton}>
         <Text style={styles.signOutText}>🚪 Sign Out</Text>
@@ -354,7 +456,13 @@ export default function ProfileScreen() {
       <Text style={styles.footerEmoji}>🧻🚽💩👑</Text>
 
       {/* ====== AVATAR PICKER MODAL ====== */}
-      <Modal visible={showAvatarPicker} animationType="slide" transparent>
+      <Modal
+        visible={showAvatarPicker}
+        animationType="slide"
+        transparent
+        onDismiss={onAvatarModalDismiss}
+        onRequestClose={() => setShowAvatarPicker(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Choose Your Avatar</Text>
@@ -366,8 +474,8 @@ export default function ProfileScreen() {
             <TouchableOpacity
               style={styles.photoUploadButton}
               onPress={() => {
+                pendingPhotoUpload.current = true;
                 setShowAvatarPicker(false);
-                setTimeout(() => handlePickPhoto(), 400);
               }}
               activeOpacity={0.7}
               disabled={uploading}
@@ -480,6 +588,49 @@ export default function ProfileScreen() {
         </View>
       </Modal>
     </ScrollView>
+  );
+}
+
+// ─── Volume Setting Row ─────────────────────────────────────
+const VOLUME_STEPS = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
+
+function VolumeSetting({
+  label,
+  value,
+  onChange,
+  C,
+  styles,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  C: any;
+  styles: any;
+}) {
+  const [current, setCurrent] = useState(value);
+  const pct = Math.round(current * 100);
+
+  return (
+    <View style={styles.volumeRow}>
+      <Text style={styles.volumeLabel}>{label}</Text>
+      <Text style={styles.volumePct}>{pct}%</Text>
+      <View style={styles.volumeBar}>
+        {VOLUME_STEPS.map((step) => (
+          <TouchableOpacity
+            key={step}
+            onPress={() => {
+              setCurrent(step);
+              onChange(step);
+            }}
+            activeOpacity={0.7}
+            style={[
+              styles.volumeBlock,
+              step <= current ? styles.volumeBlockActive : styles.volumeBlockInactive,
+            ]}
+          />
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -775,5 +926,74 @@ function makeStyles(C: any) {
     themeItemDesc: { color: C.textMuted, fontSize: 11, marginTop: 2 },
     themeLockText: { color: C.textMuted, fontSize: 12, fontWeight: '700' },
     themeActiveText: { fontSize: 18 },
+
+    // ── Sound / Haptics Settings ──
+    settingToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: C.border,
+      marginTop: 4,
+    },
+    settingLabel: {
+      color: C.textPrimary,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    togglePill: {
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 5,
+    },
+    toggleOn: {
+      backgroundColor: 'rgba(76,175,80,0.2)',
+    },
+    toggleOff: {
+      backgroundColor: 'rgba(255,61,61,0.15)',
+    },
+    toggleText: {
+      fontWeight: '800',
+      fontSize: 12,
+      color: C.textPrimary,
+    },
+    volumeRow: {
+      paddingVertical: 10,
+      borderTopWidth: 1,
+      borderTopColor: C.border,
+    },
+    volumeLabel: {
+      color: C.textPrimary,
+      fontSize: 13,
+      fontWeight: '700',
+      marginBottom: 6,
+    },
+    volumePct: {
+      color: C.gold,
+      fontSize: 12,
+      fontWeight: '800',
+      position: 'absolute',
+      right: 0,
+      top: 10,
+    },
+    volumeBar: {
+      flexDirection: 'row',
+      gap: 3,
+      height: 20,
+      alignItems: 'flex-end',
+    },
+    volumeBlock: {
+      flex: 1,
+      borderRadius: 3,
+    },
+    volumeBlockActive: {
+      backgroundColor: C.gold,
+      height: '100%',
+    },
+    volumeBlockInactive: {
+      backgroundColor: C.border,
+      height: '60%',
+    },
   });
 }

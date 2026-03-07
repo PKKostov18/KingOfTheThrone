@@ -19,6 +19,7 @@
       "expo-router",
       "expo-asset",
       "expo-font",
+      "expo-image-picker",
       "expo-tracking-transparency",
       [
         "react-native-google-mobile-ads",

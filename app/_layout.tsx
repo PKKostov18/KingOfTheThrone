@@ -4,6 +4,7 @@ import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { useThemeStore } from '../src/store/useThemeStore';
 import { useConsentStore } from '../src/store/useConsentStore';
+import { useSettingsStore } from '../src/store/useSettingsStore';
 import { useColors } from '../src/hooks/useColors';
 
 export default function RootLayout() {
@@ -11,15 +12,17 @@ export default function RootLayout() {
   const initTheme = useThemeStore((s) => s.initTheme);
   const themeInitialized = useThemeStore((s) => s.initialized);
   const { hasAcceptedConsent, initialized: consentInitialized, initConsent } = useConsentStore();
+  const initSettings = useSettingsStore((s) => s.initSettings);
   const C = useColors();
   const segments = useSegments();
   const router = useRouter();
 
-  // Initialize auth + theme + consent stores on app start
+  // Initialize auth + theme + consent + settings stores on app start
   useEffect(() => {
     initialize();
     initTheme();
     initConsent();
+    initSettings();
   }, []);
 
   // Navigate based on consent + auth state

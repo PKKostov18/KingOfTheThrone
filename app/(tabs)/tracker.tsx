@@ -13,6 +13,7 @@ import { useColors } from '../../src/hooks/useColors';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useGameStore } from '../../src/store/useGameStore';
 import { supabase } from '../../src/lib/supabase';
+import { playSfx } from '../../src/lib/sounds';
 
 interface EntryRow {
   id: string;
@@ -123,17 +124,26 @@ export default function TrackerScreen() {
 
       await fetchProfile();
 
-      // Trigger game boost
-      triggerRealLifePoopBoost();
+      // Trigger game boost (once per day)
+      const boosted = triggerRealLifePoopBoost();
       persist();
+
+      playSfx('poop');
 
       // Refresh entries
       await fetchEntries();
 
-      Alert.alert(
-        '💩 Royal Deposit + 🚀 BOOST!',
-        `Deposit #${newPoops} recorded.\n2× coin boost activated for 1 hour!\nKeep building your empire!`,
-      );
+      if (boosted) {
+        Alert.alert(
+          '💩 Royal Deposit + 🚀 BOOST!',
+          `Deposit #${newPoops} recorded.\n2× coin boost activated for 1 hour!\nKeep building your empire!`,
+        );
+      } else {
+        Alert.alert(
+          '💩 Royal Deposit Logged!',
+          `Deposit #${newPoops} recorded.\nYou already used your daily boost today — come back tomorrow for another!`,
+        );
+      }
     } catch (err: any) {
       Alert.alert('Error', err.message ?? 'Failed to log deposit.');
     } finally {

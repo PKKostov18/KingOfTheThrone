@@ -44,8 +44,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initialize: async () => {
     try {
-      // Get current session
-      const { data: { session } } = await supabase.auth.getSession();
+      // Race getSession against a timeout so the app never hangs when offline
+      const sessionResult = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+      ]);
+
+      const session = sessionResult
+        ? (sessionResult as { data: { session: Session | null } }).data.session
+        : null;
 
       set({
         session,
@@ -53,9 +60,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         initialized: true,
       });
 
-      // If there's a logged-in user, load their profile
+      // If there's a logged-in user, load their profile (non-blocking)
       if (session?.user) {
-        await get().fetchProfile();
+        get().fetchProfile().catch(() => {});
       }
 
       // Listen for auth state changes
@@ -66,7 +73,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
 
         if (session?.user) {
-          await get().fetchProfile();
+          get().fetchProfile().catch(() => {});
         } else {
           set({ profile: null });
         }
@@ -124,19 +131,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ loading: true });
 
     try {
-      // Read the file and convert to blob
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-
-      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      // Determine file extension from URI
+      const uriParts = imageUri.split('.');
+      const fileExt = (uriParts.pop()?.toLowerCase() ?? 'jpg').split('?')[0];
+      const mimeType = fileExt === 'png' ? 'image/png' : 'image/jpeg';
       const filePath = `${user.id}/avatar.${fileExt}`;
+
+      // Read the file as ArrayBuffer (works reliably in React Native)
+      const response = await fetch(imageUri);
+      const arrayBuffer = await response.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
 
       // Upload to Supabase Storage (avatars bucket)
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, blob, {
+        .upload(filePath, uint8Array, {
           upsert: true,
-          contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
+          contentType: mimeType,
         });
 
       if (uploadError) throw uploadError;
