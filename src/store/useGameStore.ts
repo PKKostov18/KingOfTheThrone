@@ -42,7 +42,11 @@ const PASSIVE_UPGRADES: UpgradeDef[] = [
 export const UPGRADES: UpgradeDef[] = [...CLICK_UPGRADES, ...PASSIVE_UPGRADES];
 
 // ─── Persist key ───────────────────────────────────────────────────────
-const STORAGE_KEY = '@kott_game_state';
+const STORAGE_KEY_PREFIX = '@kott_game_state';
+
+function getStorageKey(userId: string | null): string {
+  return `${STORAGE_KEY_PREFIX}:${userId ?? 'guest'}`;
+}
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 function calcCost(def: UpgradeDef, owned: number): number {
@@ -88,6 +92,9 @@ interface GameState {
   // Whether state has been loaded from disk
   hydrated: boolean;
 
+  // Active user scope for persistence
+  activeUserId: string | null;
+
   // Whether offline progress was already processed this session
   offlineProcessed: boolean;
 
@@ -109,6 +116,7 @@ interface GameState {
   triggerRealLifePoopBoost: () => boolean;  // returns true if boost was activated, false if already used today
   processOfflineProgress: () => { earned: number; seconds: number };
   reset: () => void;
+  setStorageUser: (userId: string | null) => Promise<void>;
   hydrate: () => Promise<void>;
   persist: () => Promise<void>;
 }
@@ -127,6 +135,7 @@ const INITIAL_STATE = {
   lastTickTimestamp: Date.now(),
   hydrated: false,
   offlineProcessed: false,
+  activeUserId: null as string | null,
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -185,6 +194,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       totalEarned: s.totalEarned + clickPower,
       lifetimeCoins: s.lifetimeCoins + clickPower,
     }));
+
+    // Save shortly after taps so progress is durable even if app is killed.
+    setTimeout(() => {
+      get().persist();
+    }, 2000);
   },
 
   tick: () => {
@@ -218,6 +232,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         def.type === 'passive' ? s.basePassiveIncome + def.basePower : s.basePassiveIncome,
     }));
 
+    get().persist();
+
     return true;
   },
 
@@ -237,6 +253,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastTickTimestamp: Date.now(),
       // lifetimeCoins persists across prestiges
     });
+
+    get().persist();
   },
 
   triggerRealLifePoopBoost: () => {
@@ -248,6 +266,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const current = get().poopBoostUntil;
     const base = current > now ? current : now;
     set({ poopBoostUntil: base + oneHour, lastBoostDate: todayStr });
+    get().persist();
     return true;
   },
 
@@ -279,7 +298,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { earned, seconds };
   },
 
-  reset: () => set({ ...INITIAL_STATE, hydrated: true, offlineProcessed: true, lastTickTimestamp: Date.now() }),
+  reset: () => set({ ...INITIAL_STATE, hydrated: true, offlineProcessed: true, lastTickTimestamp: Date.now(), activeUserId: get().activeUserId }),
+
+  setStorageUser: async (userId) => {
+    const current = get().activeUserId;
+    if (current === userId && get().hydrated) return;
+
+    // Clear in-memory state before loading this user's save file.
+    set({
+      ...INITIAL_STATE,
+      activeUserId: userId,
+      hydrated: false,
+      offlineProcessed: false,
+      lastTickTimestamp: Date.now(),
+    });
+
+    await get().hydrate();
+  },
 
   // ── Persistence ───────────────────────────────────────────
 
@@ -287,7 +322,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Only hydrate once per app session
     if (get().hydrated) return;
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const raw = await AsyncStorage.getItem(getStorageKey(get().activeUserId));
       if (raw) {
         const data = JSON.parse(raw);
         set({
@@ -316,7 +351,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     try {
       const s = get();
       await AsyncStorage.setItem(
-        STORAGE_KEY,
+        getStorageKey(s.activeUserId),
         JSON.stringify({
           coins: s.coins,
           totalEarned: s.totalEarned,

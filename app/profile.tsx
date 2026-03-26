@@ -245,9 +245,18 @@ export default function ProfileScreen() {
 
       if (result.canceled || !result.assets?.[0]?.uri) return;
 
+      const asset = result.assets[0];
+
       setUploading(true);
       try {
-        await uploadAvatar(result.assets[0].uri);
+        await uploadAvatar({
+          uri: asset.uri,
+          fileName: asset.fileName,
+          mimeType: asset.mimeType,
+          fileSize: asset.fileSize,
+          width: asset.width,
+          height: asset.height,
+        });
         // Re-fetch profile to get updated URL
         await fetchProfile();
         if (useAuthStore.getState().profile?.avatar_url) {
@@ -467,7 +476,7 @@ export default function ProfileScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Choose Your Avatar</Text>
             <Text style={styles.modalSubtitle}>
-              Pick an emoji or upload from your gallery!
+              Pick an emoji or upload a safe photo. NSFW/inappropriate images are blocked.
             </Text>
 
             {/* Upload from gallery button */}

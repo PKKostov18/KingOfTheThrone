@@ -104,9 +104,8 @@ export default function EmpireScreen() {
   // Boost timer display
   const [boostSec, setBoostSec] = useState(game.getBoostRemaining());
 
-  // Hydrate game state from disk (no-op if already hydrated)
+  // Auth store handles user-scoped hydration to avoid loading wrong account state.
   useEffect(() => {
-    game.hydrate();
     initAudio();
   }, []);
 
